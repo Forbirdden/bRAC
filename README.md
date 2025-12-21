@@ -1,3 +1,7 @@
+# Помогите нам найти Миксрея
+Автор bRAC, Миксрей, внезапно пропал из интернета, наша задача - найти его
+https://discord.gg/xtfumXMEVw
+
 # ![logo](logo.gif)
 <!--
 [<img src="https://github.com/user-attachments/assets/f2be5caa-6246-4a6a-9bee-2b53086f9afb" height="30">]()
