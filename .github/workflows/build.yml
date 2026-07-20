@@ -1,12 +1,12 @@
-name: Build and Release
+name: Manual Build and Release
 
 on:
   workflow_dispatch:
     inputs:
       version_tag:
-        description: 'continuous-build'
+        description: 'tag
         required: false
-        default: ''
+        default: 'continuous-build'
 
 jobs:
   build:
@@ -16,11 +16,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: amd64-pc-windows-gnu
+          - target: x86_64-pc-windows-gnu
             artifact_name: bRAC-windows-gnu-amd64
-          - target: amd64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-gnu
             artifact_name: bRAC-linux-gnu-amd64
-          - target: amd64-unknown-linux-musl
+          - target: x86_64-unknown-linux-musl
             artifact_name: bRAC-linux-musl-amd64
           - target: aarch64-unknown-linux-gnu
             artifact_name: bRAC-linux-gnu-arm64
@@ -31,15 +31,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Cross-Compile Sysroots and GTK4
+      - name: Install Sysroots and GTK4
         run: |
           sudo dpkg --add-architecture arm64
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev build-essential pkg-config wget unzip curl
-          sudo apt-get install -y mingw-w64
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y libgtk-4-dev build-essential pkg-config wget unzip curl mingw-w64 musl-tools
           sudo apt-get install -y libgtk-4-dev:arm64 libglib2.0-dev:arm64
-          sudo apt-get install -y musl-tools
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -49,33 +46,35 @@ jobs:
       - name: Configure Environment Variables
         run: |
           echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ] || [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
             echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
             echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          fi
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
+            echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV
+            echo "CXX_aarch64_unknown_linux_musl=musl-g++" >> $GITHUB_ENV
           fi
 
+      - name: Build Windows
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: |
+          export PKG_CONFIG_ALL_STATIC=1
+          make windows
 
-      - name: Build Linux AMD64 GNU
-        if: matrix.target == 'amd64-unknown-linux-gnu'
+      - name: Build Linux x86_64 GNU
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo build -r --target ${{ matrix.target }}
 
-      - name: Build Linux AMD64 MUSL
-        if: matrix.target == 'amd64-unknown-linux-musl'
+      - name: Build Linux x86_64 MUSL
+        if: matrix.target == 'x86_64-unknown-linux-musl'
         run: cargo build -r --target ${{ matrix.target }}
         
       - name: Build Linux ARM64
         if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-musl'
         run: cargo build -r --target ${{ matrix.target }}
-
-      - name: Build Windows
-        if: matrix.target == 'amd64-pc-windows-gnu'
-        run: |
-          export PKG_CONFIG_ALL_STATIC=1
-          make windows
           
       - name: Prepare Linux Assets
-        if: matrix.target != 'amd64-pc-windows-gnu'
+        if: matrix.target != 'x86_64-pc-windows-gnu'
         run: |
           mkdir -p build/${{ matrix.target }}
           cp target/${{ matrix.target }}/release/bRAC build/${{ matrix.target }}/
