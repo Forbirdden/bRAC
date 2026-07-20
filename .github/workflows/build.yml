@@ -1,0 +1,120 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-gnu
+            os: ubuntu-latest
+            artifact_name: bRAC-windows-x86_64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact_name: bRAC-linux-x86_64
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact_name: bRAC-linux-musl-x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact_name: bRAC-linux-gnu-arm64
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact_name: bRAC-linux-musl-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev build-essential pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Cross for cross-compilation
+        if: matrix.target != 'x86_64-unknown-linux-gnu' && matrix.target != 'x86_64-pc-windows-gnu'
+        run: cargo install cross --git https://github.com
+
+      - name: Build with Cargo
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo build -r --target ${{ matrix.target }}
+
+      - name: Build with Cross
+        if: matrix.target != 'x86_64-unknown-linux-gnu' && matrix.target != 'x86_64-pc-windows-gnu'
+        run: cross build -r --target ${{ matrix.target }}
+
+      - name: Build Windows via Makefile
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: |
+          sudo apt-get install -y mingw-w64 wget unzip curl
+          make windows
+
+      - name: Prepare Linux Assets
+        if: matrix.target != 'x86_64-pc-windows-gnu'
+        run: |
+          mkdir -p build/${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/bRAC build/${{ matrix.target }}/
+          cp ru.themixray.bRAC.png build/${{ matrix.target }}/
+          cp ru.themixray.bRAC.desktop build/${{ matrix.target }}/
+          cp install.sh build/${{ matrix.target }}/
+          cp uninstall.sh build/${{ matrix.target }}/
+
+      - name: Archive production artifacts
+        run: |
+          cd build/${{ matrix.target }}
+          zip -r ../../${{ matrix.artifact_name }}.zip .
+          cd ../..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.zip
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Move artifacts to root
+        run: |
+          mv artifacts/*/*.zip .
+          ls -la
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bRAC-windows-gnu-amd64.zip
+            bRAC-linux-gnu-amd64.zip
+            bRAC-linux-musl-amd64.zip
+            bRAC-linux-gnu-arm64.zip
+            bRAC-linux-musl-arm64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
