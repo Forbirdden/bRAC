@@ -20,13 +20,13 @@ jobs:
         include:
           - target: x86_64-pc-windows-gnu
             os: ubuntu-latest
-            artifact_name: bRAC-windows-x86_64
+            artifact_name: bRAC-windows-gnu-amd64
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact_name: bRAC-linux-x86_64
+            artifact_name: bRAC-linux-gnu-amd64
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            artifact_name: bRAC-linux-musl-x86_64
+            artifact_name: bRAC-linux-musl-amd64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             artifact_name: bRAC-linux-gnu-arm64
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Install system dependencies (GTK4)
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev build-essential pkg-config
@@ -50,20 +50,22 @@ jobs:
 
       - name: Install Cross for cross-compilation
         if: matrix.target != 'x86_64-unknown-linux-gnu' && matrix.target != 'x86_64-pc-windows-gnu'
-        run: cargo install cross --git https://github.com
+        run: cargo install cross --bins
 
-      - name: Build with Cargo
+      - name: Build with Cargo (Native Linux)
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo build -r --target ${{ matrix.target }}
 
-      - name: Build with Cross
+      - name: Build with Cross (MUSL / ARM)
         if: matrix.target != 'x86_64-unknown-linux-gnu' && matrix.target != 'x86_64-pc-windows-gnu'
         run: cross build -r --target ${{ matrix.target }}
-
+        
       - name: Build Windows via Makefile
         if: matrix.target == 'x86_64-pc-windows-gnu'
         run: |
           sudo apt-get install -y mingw-w64 wget unzip curl
+          export PKG_CONFIG_ALLOW_CROSS=1
+          export PKG_CONFIG_ALL_STATIC=1
           make windows
 
       - name: Prepare Linux Assets
